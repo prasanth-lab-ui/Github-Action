@@ -40,10 +40,20 @@ echo -e "${NC}"
 # ==============================================================================
 log_section "Step 1: Installing prerequisites"
 
-log_info "Updating package list..."
-sudo apt-get update -qq
+# Only refresh apt if something actually needs installing — avoids hard-failing
+# on unrelated broken third-party repos (e.g. expired InfluxData/Docker keys).
+NEED_APT_UPDATE=0
+command -v msmtp  >/dev/null 2>&1 || NEED_APT_UPDATE=1
 
-# rclone
+if [ "$NEED_APT_UPDATE" -eq 1 ]; then
+    log_info "Updating package list (ignoring unrelated repo warnings)..."
+    # Don't let a broken third-party repo kill the wizard.
+    sudo apt-get update -qq 2>&1 | grep -v -E "^(W:|E:)" || true
+else
+    log_ok "All apt-managed tools already installed — skipping apt update"
+fi
+
+# rclone (installed via rclone.org script, not apt — unaffected by apt state)
 if ! command -v rclone >/dev/null 2>&1; then
     log_info "Installing rclone..."
     curl -s https://rclone.org/install.sh | sudo bash
@@ -52,10 +62,18 @@ else
     log_ok "rclone already installed: $(rclone version | head -1)"
 fi
 
-# msmtp (for Gmail notifications)
+# msmtp (for Gmail notifications) — installed via apt
 if ! command -v msmtp >/dev/null 2>&1; then
     log_info "Installing msmtp (Gmail sender)..."
-    sudo apt-get install -y -qq msmtp msmtp-mta
+    if ! sudo apt-get install -y -qq msmtp msmtp-mta; then
+        log_error "Failed to install msmtp via apt."
+        echo "  Your apt sources have a broken third-party repo. Fix it with:"
+        echo "    grep -rl 'influxdata\\|NO_PUBKEY' /etc/apt/sources.list.d/ 2>/dev/null"
+        echo "    sudo rm /etc/apt/sources.list.d/<the-broken-file>.list"
+        echo "    sudo apt-get update"
+        echo "  Then re-run ./setup-delivery.sh"
+        exit 1
+    fi
     log_ok "msmtp installed"
 else
     log_ok "msmtp already installed"
