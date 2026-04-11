@@ -1,0 +1,233 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# Saithanyam Delivery Setup — One-Time Interactive Wizard
+# ==============================================================================
+# Run this ONCE before using auto-build-deliver.sh.
+# Sets up: rclone (Google Drive), msmtp (Gmail notification), saves config.
+#
+# Usage: ./setup-delivery.sh
+# ==============================================================================
+
+set -e
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+log_info()    { echo -e "${BLUE}[INFO]${NC} $1"; }
+log_ok()      { echo -e "${GREEN}[OK]${NC} $1"; }
+log_warn()    { echo -e "${YELLOW}[WARN]${NC} $1"; }
+log_error()   { echo -e "${RED}[ERROR]${NC} $1"; }
+log_section() { echo -e "\n${CYAN}══════════════ $1 ══════════════${NC}"; }
+ask()         { echo -e "${YELLOW}[?]${NC} $1"; }
+
+CONFIG_FILE="$HOME/.saithanyam_delivery.conf"
+VERSION_FILE="$HOME/.saithanyam_build_counter"
+
+clear
+echo -e "${CYAN}"
+echo "  ╔═══════════════════════════════════════════╗"
+echo "  ║   Saithanyam Auto-Delivery Setup Wizard   ║"
+echo "  ║   One-time setup — takes about 5 minutes  ║"
+echo "  ╚═══════════════════════════════════════════╝"
+echo -e "${NC}"
+
+# ==============================================================================
+# STEP 1 — Install prerequisites
+# ==============================================================================
+log_section "Step 1: Installing prerequisites"
+
+log_info "Updating package list..."
+sudo apt-get update -qq
+
+# rclone
+if ! command -v rclone >/dev/null 2>&1; then
+    log_info "Installing rclone..."
+    curl -s https://rclone.org/install.sh | sudo bash
+    log_ok "rclone installed: $(rclone version | head -1)"
+else
+    log_ok "rclone already installed: $(rclone version | head -1)"
+fi
+
+# msmtp (for Gmail notifications)
+if ! command -v msmtp >/dev/null 2>&1; then
+    log_info "Installing msmtp (Gmail sender)..."
+    sudo apt-get install -y -qq msmtp msmtp-mta
+    log_ok "msmtp installed"
+else
+    log_ok "msmtp already installed"
+fi
+
+# ==============================================================================
+# STEP 2 — Configure Google Drive with rclone
+# ==============================================================================
+log_section "Step 2: Google Drive Setup (rclone)"
+
+echo ""
+echo "  rclone will now connect to your Google Drive."
+echo "  You will need to:"
+echo "    1. Type a name for the connection — use exactly: gdrive"
+echo "    2. Choose 'drive' for Google Drive storage"
+echo "    3. Follow the OAuth browser steps (a link opens)"
+echo "    4. Allow access, then come back here"
+echo ""
+ask "Press ENTER to start rclone config..."
+read -r
+
+# Check if 'gdrive' remote already exists
+if rclone listremotes 2>/dev/null | grep -q "^gdrive:"; then
+    log_ok "Google Drive remote 'gdrive' already configured"
+else
+    log_info "Starting rclone config (type 'gdrive' when asked for a name)..."
+    rclone config
+fi
+
+# Verify remote works
+log_info "Verifying Google Drive connection..."
+if rclone lsd gdrive: >/dev/null 2>&1; then
+    log_ok "Google Drive connected successfully"
+else
+    log_error "Could not connect to Google Drive remote 'gdrive'."
+    echo "Make sure you named the remote exactly 'gdrive' during setup."
+    echo "Re-run this script to try again."
+    exit 1
+fi
+
+# Create the uploads folder on Drive
+DRIVE_FOLDER="Saithanyam-Builds"
+log_info "Creating folder '$DRIVE_FOLDER' on Google Drive..."
+rclone mkdir "gdrive:$DRIVE_FOLDER" 2>/dev/null || true
+log_ok "Drive folder ready: gdrive:$DRIVE_FOLDER"
+
+# ==============================================================================
+# STEP 3 — Gmail notification setup
+# ==============================================================================
+log_section "Step 3: Gmail Notification Setup"
+
+echo ""
+echo "  This sends you an email notification after each build."
+echo "  It does NOT send the APK file (APK goes to Google Drive)."
+echo "  It sends: 'Build #5 ready — Saithanyam-b005-2026-04-11.apk'"
+echo ""
+echo "  IMPORTANT: You need a Gmail App Password (NOT your normal Gmail password)."
+echo "  How to get it:"
+echo "    1. Go to myaccount.google.com"
+echo "    2. Security > 2-Step Verification (must be ON)"
+echo "    3. App Passwords > Create new > Name it 'Saithanyam'"
+echo "    4. Copy the 16-character password (e.g. abcd efgh ijkl mnop)"
+echo ""
+
+ask "Enter your Gmail address (e.g. yourname@gmail.com): "
+read -r GMAIL_FROM
+
+ask "Enter your Gmail App Password (16 chars, spaces OK): "
+read -rs GMAIL_APP_PASS
+echo ""
+# Remove spaces from app password
+GMAIL_APP_PASS="${GMAIL_APP_PASS// /}"
+
+ask "Enter recipient email for notifications (press Enter to use same Gmail): "
+read -r GMAIL_TO
+if [ -z "$GMAIL_TO" ]; then
+    GMAIL_TO="$GMAIL_FROM"
+fi
+
+# Write msmtp config
+MSMTP_CONF="$HOME/.msmtprc"
+cat > "$MSMTP_CONF" << MSMTPEOF
+# msmtp configuration — auto-generated by Saithanyam setup
+defaults
+auth           on
+tls            on
+tls_trust_file /etc/ssl/certs/ca-certificates.crt
+logfile        ~/.msmtp.log
+
+account        gmail
+host           smtp.gmail.com
+port           587
+from           ${GMAIL_FROM}
+user           ${GMAIL_FROM}
+password       ${GMAIL_APP_PASS}
+
+account default : gmail
+MSMTPEOF
+chmod 600 "$MSMTP_CONF"
+log_ok "msmtp config written"
+
+# Send test email
+log_info "Sending test email to $GMAIL_TO ..."
+TEST_RESULT="pass"
+printf "Subject: [Saithanyam] Setup Test\nFrom: %s\nTo: %s\n\nSetup complete! Auto-build delivery is ready.\n" \
+    "$GMAIL_FROM" "$GMAIL_TO" \
+    | msmtp "$GMAIL_TO" 2>/dev/null || TEST_RESULT="fail"
+
+if [ "$TEST_RESULT" = "pass" ]; then
+    log_ok "Test email sent to $GMAIL_TO — check your inbox!"
+else
+    log_warn "Could not send test email. Check your Gmail address and App Password."
+    echo "You can still use auto-build-deliver.sh — Drive upload will work."
+    echo "Fix the Gmail config later by re-running this script."
+fi
+
+# ==============================================================================
+# STEP 4 — Ask for build type preference
+# ==============================================================================
+log_section "Step 4: Build Preference"
+
+echo ""
+echo "  Which APK type do you want to build by default?"
+echo "    1) debug   — faster build, larger file, for testing"
+echo "    2) release — slower build, smaller file, optimized"
+echo ""
+ask "Enter 1 or 2 (default: 1): "
+read -r BUILD_CHOICE
+case "$BUILD_CHOICE" in
+    2) DEFAULT_BUILD_TYPE="release" ;;
+    *) DEFAULT_BUILD_TYPE="debug" ;;
+esac
+log_ok "Default build type: $DEFAULT_BUILD_TYPE"
+
+# ==============================================================================
+# STEP 5 — Save config
+# ==============================================================================
+log_section "Step 5: Saving Configuration"
+
+# Initialise version counter if not exists
+if [ ! -f "$VERSION_FILE" ]; then
+    echo "0" > "$VERSION_FILE"
+fi
+
+cat > "$CONFIG_FILE" << CONFEOF
+# Saithanyam auto-build delivery config
+# Generated by setup-delivery.sh on $(date)
+GMAIL_FROM="${GMAIL_FROM}"
+GMAIL_TO="${GMAIL_TO}"
+DRIVE_FOLDER="${DRIVE_FOLDER}"
+DEFAULT_BUILD_TYPE="${DEFAULT_BUILD_TYPE}"
+REPO_URL="https://github.com/prasanth-lab-ui/Github-Action.git"
+REPO_BRANCH="claude/saithanyam-wallpaper-app-JUFt5"
+CONFEOF
+
+chmod 600 "$CONFIG_FILE"
+log_ok "Config saved to $CONFIG_FILE"
+
+# ==============================================================================
+# Done
+# ==============================================================================
+echo ""
+echo -e "${GREEN}════════════════════════════════════════════════${NC}"
+echo -e "${GREEN}  Setup complete! Here is what was configured:  ${NC}"
+echo -e "${GREEN}════════════════════════════════════════════════${NC}"
+echo ""
+echo "  Google Drive  : gdrive:$DRIVE_FOLDER"
+echo "  Notifications : $GMAIL_TO"
+echo "  Build type    : $DEFAULT_BUILD_TYPE"
+echo "  Config file   : $CONFIG_FILE"
+echo ""
+echo "  Now run the auto-build script:"
+echo ""
+echo -e "  ${CYAN}./auto-build-deliver.sh${NC}"
+echo ""
