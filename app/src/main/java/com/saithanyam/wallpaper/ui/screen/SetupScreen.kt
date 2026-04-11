@@ -4,7 +4,10 @@ import android.app.WallpaperManager
 import android.content.ComponentName
 import android.content.Intent
 import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -13,12 +16,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -35,13 +40,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.saithanyam.wallpaper.service.NumberWallpaperService
 import com.saithanyam.wallpaper.service.SaithanyamWallpaperService
 import com.saithanyam.wallpaper.viewmodel.SetupViewModel
+import com.saithanyam.wallpaper.viewmodel.WallpaperStyle
 import java.time.Instant
-import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
@@ -141,15 +146,48 @@ fun SetupScreen(viewModel: SetupViewModel) {
                 }
             }
 
-            Spacer(modifier = Modifier.height(48.dp))
+            Spacer(modifier = Modifier.height(40.dp))
 
-            // Set wallpaper button
+            // ---------- Style selector ----------
+            Text(
+                text = "Wallpaper style",
+                fontSize = 12.sp,
+                color = Color.Gray
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                StyleCard(
+                    label = "Grid",
+                    description = "4,000 dots",
+                    selected = state.selectedStyle == WallpaperStyle.GRID,
+                    onClick = { viewModel.selectStyle(WallpaperStyle.GRID) },
+                    modifier = Modifier.weight(1f)
+                )
+                StyleCard(
+                    label = "Number",
+                    description = "Remaining weeks",
+                    selected = state.selectedStyle == WallpaperStyle.NUMBER,
+                    onClick = { viewModel.selectStyle(WallpaperStyle.NUMBER) },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            // Set wallpaper button — sets whichever style is currently selected
             Button(
                 onClick = {
+                    val serviceClass = when (state.selectedStyle) {
+                        WallpaperStyle.GRID -> SaithanyamWallpaperService::class.java
+                        WallpaperStyle.NUMBER -> NumberWallpaperService::class.java
+                    }
                     val intent = Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER).apply {
                         putExtra(
                             WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT,
-                            ComponentName(context, SaithanyamWallpaperService::class.java)
+                            ComponentName(context, serviceClass)
                         )
                     }
                     context.startActivity(intent)
@@ -165,7 +203,10 @@ fun SetupScreen(viewModel: SetupViewModel) {
             Spacer(modifier = Modifier.height(16.dp))
 
             // Share card button
-            OutlinedButton(onClick = { viewModel.onShareCard() }) {
+            OutlinedButton(
+                onClick = { viewModel.onShareCard() },
+                border = BorderStroke(1.dp, Color.White)
+            ) {
                 Text("Share card", color = Color.White)
             }
 
@@ -204,6 +245,50 @@ fun SetupScreen(viewModel: SetupViewModel) {
             }
         ) {
             DatePicker(state = datePickerState)
+        }
+    }
+}
+
+/**
+ * Tappable card used by the style selector. Selected state is a filled white
+ * background with black text; unselected is black with a thin white border.
+ */
+@Composable
+private fun StyleCard(
+    label: String,
+    description: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val bg = if (selected) Color.White else Color.Black
+    val fg = if (selected) Color.Black else Color.White
+
+    Card(
+        modifier = modifier
+            .height(80.dp)
+            .clickable { onClick() },
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = bg),
+        border = BorderStroke(1.dp, Color.White)
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = label,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = fg
+                )
+                Text(
+                    text = description,
+                    fontSize = 10.sp,
+                    color = if (selected) Color(0xFF666666) else Color.Gray
+                )
+            }
         }
     }
 }

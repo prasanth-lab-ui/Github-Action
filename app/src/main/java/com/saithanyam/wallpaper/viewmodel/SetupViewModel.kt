@@ -9,11 +9,17 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.time.LocalDate
 
+/**
+ * Available live wallpaper styles.
+ */
+enum class WallpaperStyle { GRID, NUMBER }
+
 data class SetupUiState(
     val birthday: LocalDate? = null,
     val weeksLived: Int = 0,
     val weeksRemaining: Int = WeekCalculator.TOTAL_WEEKS,
     val isConfirmed: Boolean = false,
+    val selectedStyle: WallpaperStyle = WallpaperStyle.GRID,
     val shareSuccess: Boolean? = null
 )
 
@@ -35,12 +41,16 @@ class SetupViewModel(application: Application) : AndroidViewModel(application) {
         repository.saveBirthday(date)
         val lived = WeekCalculator.weeksLived(date)
         val remaining = WeekCalculator.weeksRemaining(date)
-        _uiState.value = SetupUiState(
+        _uiState.value = _uiState.value.copy(
             birthday = date,
             weeksLived = lived,
             weeksRemaining = remaining,
             isConfirmed = true
         )
+    }
+
+    fun selectStyle(style: WallpaperStyle) {
+        _uiState.value = _uiState.value.copy(selectedStyle = style)
     }
 
     fun onShareCard() {

@@ -2,4 +2,7 @@
 <resources>
     <string name="app_name">Saithanyam</string>
     <string name="wallpaper_description">A life-in-weeks live wallpaper — 4,000 dots, one per week.</string>
+    <string name="wallpaper_grid_label">Saithanyam — Grid</string>
+    <string name="wallpaper_number_label">Saithanyam — Number</string>
+    <string name="wallpaper_number_description">Minimalist live wallpaper showing the weeks you have remaining as a single number.</string>
 </resources>
