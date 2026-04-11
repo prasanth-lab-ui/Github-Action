@@ -56,11 +56,11 @@ if ! command -v java >/dev/null 2>&1; then
 fi
 
 JAVA_VERSION=$(java -version 2>&1 | head -n 1 | awk -F '"' '{print $2}' | cut -d '.' -f 1)
-if [ "$JAVA_VERSION" != "17" ]; then
-    log_warn "Java $JAVA_VERSION found, but Java 17 is required."
+if [ "$JAVA_VERSION" -lt 17 ] 2>/dev/null; then
+    log_warn "Java $JAVA_VERSION found, but Java 17 or newer is required."
     echo "Install it with:"
     echo "  sudo apt update && sudo apt install -y openjdk-17-jdk"
-    echo "  sudo update-alternatives --config java   # pick Java 17"
+    echo "  sudo update-alternatives --config java   # pick Java 17+"
     exit 1
 fi
 
@@ -68,7 +68,7 @@ fi
 if [ -z "$JAVA_HOME" ]; then
     export JAVA_HOME="$(dirname $(dirname $(readlink -f $(which java))))"
 fi
-log_ok "Java 17 found at $JAVA_HOME"
+log_ok "Java $JAVA_VERSION found at $JAVA_HOME"
 
 # ==============================================================================
 # STEP 2: Check / Install Android SDK

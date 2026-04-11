@@ -108,8 +108,8 @@ if ! command -v java >/dev/null 2>&1; then
     exit 1
 fi
 JAVA_VERSION=$(java -version 2>&1 | head -n 1 | awk -F '"' '{print $2}' | cut -d '.' -f 1)
-if [ "$JAVA_VERSION" != "17" ]; then
-    log_error "Java $JAVA_VERSION found, need Java 17. Run:"
+if [ "$JAVA_VERSION" -lt 17 ] 2>/dev/null; then
+    log_error "Java $JAVA_VERSION found, need Java 17 or newer. Run:"
     echo "  sudo apt install -y openjdk-17-jdk"
     echo "  sudo update-alternatives --config java"
     exit 1
@@ -118,7 +118,7 @@ if [ -z "$JAVA_HOME" ]; then
     export JAVA_HOME
     JAVA_HOME="$(dirname "$(dirname "$(readlink -f "$(which java)")")")"
 fi
-log_ok "Java 17 at $JAVA_HOME"
+log_ok "Java $JAVA_VERSION at $JAVA_HOME"
 
 # ==============================================================================
 # STEP 3: Clone the repo to temp dir
